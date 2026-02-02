@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interactivo Accesible - Tijuana, BC</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <style>
+        /* LAYOUT PRINCIPAL */
+        .app-container { display: flex; height: 100vh; flex-direction: column; }
+        .content-wrapper { display: flex; flex: 1; overflow: hidden; }
+        .map-container { flex: 1; position: relative; }
+        .list-container { width: 350px; background: #f9fafb; border-left: 1px solid #e5e7eb; overflow-y: auto; display: flex; flex-direction: column; }
+        
+        #map { width: 100%; height: 100%; }
+        
+        /* CONTROLES DE LEAFLET CON MEJOR ACCESIBILIDAD */
+        .leaflet-control-zoom {
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .leaflet-control-zoom a {
+            width: 44px !important;
+            height: 44px !important;
+            line-height: 44px !important;
+            font-size: 24px !important;
+            font-weight: bold;
+            background: white !important;
+            color: #1f2937 !important;
+        }
+        
+        .leaflet-control-zoom a:hover {
+            background: #f3f4f6 !important;
+        }
+        
+        .leaflet-control-zoom a:focus {
+            outline: 3px solid #3b82f6;
+            outline-offset: 2px;
+        }
+        
+        .leaflet-bottom.leaflet-right { bottom: 20px; right: 10px; }
+        
+        /* BOTÓN DE UBICACIÓN ACCESIBLE */
+        .locate-btn {
+            position: absolute;
+            bottom: 90px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 10px;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transition: all 0.2s;
+        }
+        
+        .locate-btn:hover { background: #f3f4f6; }
+        .locate-btn:active { transform: scale(0.95); }
+        .locate-btn:focus { 
+            outline: 3px solid #3b82f6;
+            outline-offset: 2px;
+        }
+        
+        /* TOAST NOTIFICATIONS */
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 10000;
+            pointer-events: none;
+        }
+        
+        .toast {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            min-width: 250px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            pointer-events: auto;
+        }
+        
+        .toast.success { border-left: 4px solid #10b981; }
+        .toast.error { border-left: 4px solid #ef4444; }
+        .toast.info { border-left: 4px solid #3b82f6; }
+        
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(400px); opacity: 0; }
+        }
+        
+        .toast.hiding { animation: slideOut 0.3s ease-in forwards; }
+        
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            flex-shrink: 0;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* POPUPS DEL MAPA */
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        .popup-content { padding: 16px; min-width: 200px; }
+        .popup-title { font-weight: bold; font-size: 16px; margin-bottom: 12px; color: #1f2937; }
+        .popup-buttons { display: flex; gap: 8px; margin-top: 12px; }
+        
+        .btn {
+            flex: 1;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: 44px;
+        }
+        
+        .btn:active { transform: scale(0.95); }
+        .btn:focus {
+            outline: 3px solid #3b82f6;
+            outline-offset: 2px;
+        }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-secondary { background: #e5e7eb; color: #374151; }
+        .btn-secondary:hover { background: #d1d5db; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* VISTA DE LISTA */
+        .list-header {
+            padding: 16px;
+            background: white;
+            border-bottom: 2px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+        
+        .list-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        
+        .list-item {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 2px solid #e5e7eb;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .list-item:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .list-item:focus {
+            outline: 3px solid #3b82f6;
+            outline-offset: 2px;
+        }
+        
+        .list-item.active {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+        
+        .list-item-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+        
+        .list-item-content {
+            flex: 1;
+        }
+        
+        .list-item-title {
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+        
+        .list-item-coords {
+            font-size: 13px;
+            color: #6b7280;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .list-item-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .list-item-btn {
+            padding: 6px 12px;
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .list-item-btn:hover {
+            background: #e5e7eb;
+        }
+        
+        .list-item-btn:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: 1px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #9ca3af;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .route-info {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 2px solid #3b82f6;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
+        
+        .route-info-title {
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .route-info-details {
+            font-size: 14px;
+            color: #374151;
+            line-height: 1.6;
+        }
+        
+        /* PESTAÑAS MÓVIL */
+        .mobile-tabs {
+            display: none;
+            background: white;
+            border-bottom: 2px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+        
+        .mobile-tab {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: #6b7280;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .mobile-tab.active {
+            color: #3b82f6;
+            border-bottom-color: #3b82f6;
+        }
+        
+        .mobile-tab:focus {
+            outline: 2px solid #3b82f6;
+            outline-offset: -2px;
+        }
+        
+        /* RESPONSIVE - MÓVIL */
+        @media (max-width: 768px) {
+            .content-wrapper {
+                flex-direction: column;
+            }
+            
+            .mobile-tabs {
+                display: flex;
+            }
+            
+            .map-container,
+            .list-container {
+                width: 100%;
+                height: calc(100vh - 60px - 48px); /* header + tabs */
+                display: none;
+            }
+            
+            .map-container.active,
+            .list-container.active {
+                display: flex;
+            }
+            
+            .list-container {
+                border-left: none;
+                border-top: 1px solid #e5e7eb;
+            }
+            
+            .leaflet-control-zoom a {
+                width: 40px !important;
+                height: 40px !important;
+                line-height: 40px !important;
+                font-size: 22px !important;
+            }
+            
+            .leaflet-bottom.leaflet-right { 
+                bottom: 10px; 
+                right: 8px; 
+            }
+            
+            .locate-btn {
+                bottom: 60px;
+                right: 8px;
+                width: 40px;
+                height: 40px;
+            }
+            
+            .toast-container {
+                right: 10px;
+                left: 10px;
+                top: 70px;
+            }
+            
+            .toast {
+                min-width: auto;
+                width: 100%;
+            }
+        }
+        
+        /* RESPONSIVE - TABLET */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .list-container {
+                width: 300px;
+            }
+        }
+        
+        /* RESPONSIVE - LANDSCAPE MÓVIL */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .mobile-tabs {
+                padding: 8px 0;
+            }
+            
+            .mobile-tab {
+                padding: 8px;
+                font-size: 13px;
+            }
+            
+            .list-header {
+                padding: 12px;
+            }
+            
+            .list-item {
+                padding: 12px;
+                margin-bottom: 8px;
+            }
+        }
+        
+        /* MEJORA DE CONTRASTE PARA ACCESIBILIDAD */
+        .high-contrast-marker {
+            filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));
+        }
+    </style>
+</head>
+<body class="m-0 p-0 overflow-hidden">
+    
+    <div class="app-container">
+        <!-- HEADER -->
+        <div id="header" class="bg-white shadow-md z-[1000] flex-shrink-0">
+            <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">Mapa Accesible - Tijuana, BC</h1>
+                    <p class="text-xs text-gray-600 mt-1">Vistas sincronizadas: Mapa y Lista</p>
+                </div>
+                <div>
+                    <span class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold">
+                        ♿ Accesible
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- PESTAÑAS MÓVIL -->
+        <div class="mobile-tabs">
+            <button class="mobile-tab active" data-view="map" aria-label="Ver mapa interactivo">
+                🗺️ Mapa
+            </button>
+            <button class="mobile-tab" data-view="list" aria-label="Ver lista de lugares">
+                📋 Lista
+            </button>
+        </div>
+        
+        <!-- CONTENIDO PRINCIPAL -->
+        <div class="content-wrapper">
+            <!-- MAPA -->
+            <div class="map-container active" role="region" aria-label="Mapa interactivo de Tijuana">
+                <div id="map"></div>
+                
+                <button class="locate-btn" id="locateBtn" 
+                        aria-label="Actualizar mi ubicación"
+                        title="Actualizar mi ubicación">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <circle cx="12" cy="12" r="3"/>
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="2" x2="12" y2="6"/>
+                        <line x1="12" y1="18" x2="12" y2="22"/>
+                        <line x1="2" y1="12" x2="6" y2="12"/>
+                        <line x1="18" y1="12" x2="22" y2="12"/>
+                    </svg>
+                </button>
+                
+                <div id="mapInstructions" class="absolute bottom-2 left-2 z-[1000] bg-white/90 backdrop-blur-sm px-3 py-2 rounded-md shadow-md max-w-xs">
+                    <p class="text-xs text-gray-700 font-medium">💡 Haz clic en el mapa para agregar un punto</p>
+                </div>
+            </div>
+            
+            <!-- LISTA -->
+            <div class="list-container" role="region" aria-label="Lista de lugares guardados">
+                <div class="list-header">
+                    <h2 class="text-lg font-bold text-gray-800 mb-1">Lugares Guardados</h2>
+                    <p class="text-xs text-gray-600">Máximo 2 puntos para crear ruta</p>
+                </div>
+                
+                <div class="list-content" id="listContent">
+                    <div class="empty-state" role="status" aria-live="polite">
+                        <div class="empty-state-icon">📍</div>
+                        <p class="font-medium text-gray-700 mb-2">No hay lugares guardados</p>
+                        <p class="text-sm">Haz clic en el mapa para agregar puntos</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast-container" id="toastContainer" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <script>
+        // SISTEMA DE NOTIFICACIONES
+        function showToast(message, type = 'info', duration = 3000) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.setAttribute('role', 'alert');
+            
+            let icon = '';
+            if (type === 'success') {
+                icon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fill="#10b981"/></svg>';
+            } else if (type === 'error') {
+                icon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" fill="#ef4444"/></svg>';
+            } else {
+                icon = '<div class="spinner" aria-hidden="true"></div>';
+            }
+            
+            toast.innerHTML = `${icon}<span style="flex: 1; font-size: 14px; color: #374151;">${message}</span>`;
+            container.appendChild(toast);
+            
+            if (duration > 0) {
+                setTimeout(() => {
+                    toast.classList.add('hiding');
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            }
+            
+            return toast;
+        }
+        
+        // INICIALIZACIÓN
+        document.addEventListener('DOMContentLoaded', function() {
+            const tijuanaCoords = [32.5149, -117.0382];
+            let initialZoom = window.innerWidth <= 768 ? 12 : 13;
+            let userLocationMarker = null;
+            
+            const map = L.map('map', {
+                center: tijuanaCoords,
+                zoom: initialZoom,
+                zoomControl: true
+            });
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                maxZoom: 19,
+                minZoom: 3
+            }).addTo(map);
+            
+            map.zoomControl.setPosition('bottomright');
+            
+            // Agregar aria-labels a controles de zoom
+            setTimeout(() => {
+                const zoomIn = document.querySelector('.leaflet-control-zoom-in');
+                const zoomOut = document.querySelector('.leaflet-control-zoom-out');
+                if (zoomIn) zoomIn.setAttribute('aria-label', 'Acercar mapa');
+                if (zoomOut) zoomOut.setAttribute('aria-label', 'Alejar mapa');
+            }, 100);
+            
+            // OBTENER UBICACIÓN AUTOMÁTICAMENTE AL CARGAR
+            function getUserLocation() {
+                if (!navigator.geolocation) {
+                    showToast('Geolocalización no disponible en este navegador', 'info', 3000);
+                    return;
+                }
+                
+                const loadingToast = showToast('📍 Obteniendo tu ubicación...', 'info', 0);
+                
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        loadingToast.remove();
+                        
+                        const userCoords = [position.coords.latitude, position.coords.longitude];
+                        
+                        // Centrar el mapa en la ubicación del usuario
+                        map.setView(userCoords, 15, { animate: true });
+                        
+                        // Crear marcador de ubicación del usuario
+                        const userIcon = L.divIcon({
+                            className: 'high-contrast-marker',
+                            html: `<div style="position: relative;">
+                                <div style="background: #3b82f6; width: 20px; height: 20px; border-radius: 50%; border: 4px solid white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.8), 0 0 5px rgba(0,0,0,0.5);"></div>
+                                <div style="position: absolute; top: 50%; left: 50%; width: 60px; height: 60px; border: 2px solid #3b82f6; border-radius: 50%; transform: translate(-50%, -50%); animation: pulse 2s infinite;"></div>
+                            </div>
+                            <style>
+                                @keyframes pulse {
+                                    0% { opacity: 1; transform: translate(-50%, -50%) scale(0.8); }
+                                    50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.2); }
+                                    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+                                }
+                            </style>`,
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        });
+                        
+                        // Remover marcador anterior si existe
+                        if (userLocationMarker) {
+                            map.removeLayer(userLocationMarker);
+                        }
+                        
+                        userLocationMarker = L.marker(userCoords, { icon: userIcon })
+                            .addTo(map)
+                            .bindPopup(`
+                                <div style="padding: 10px; text-align: center;">
+                                    <div style="font-weight: bold; margin-bottom: 4px;">📍 Tu ubicación</div>
+                                    <div style="font-size: 11px; color: #6b7280;">
+                                        Lat: ${userCoords[0].toFixed(6)}<br>
+                                        Lng: ${userCoords[1].toFixed(6)}
+                                    </div>
+                                    <div style="font-size: 10px; color: #9ca3af; margin-top: 6px;">
+                                        Precisión: ±${Math.round(position.coords.accuracy)}m
+                                    </div>
+                                </div>
+                            `)
+                            .openPopup();
+                        
+                        // Agregar círculo de precisión
+                        L.circle(userCoords, {
+                            color: '#3b82f6',
+                            fillColor: '#93c5fd',
+                            fillOpacity: 0.15,
+                            radius: position.coords.accuracy,
+                            weight: 2
+                        }).addTo(map);
+                        
+                        showToast('✅ Ubicación encontrada', 'success', 3000);
+                    },
+                    function(error) {
+                        loadingToast.remove();
+                        
+                        let errorMessage = 'No se pudo obtener tu ubicación';
+                        
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage = '⚠️ Permiso de ubicación denegado. Revisa la configuración del navegador.';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage = '⚠️ Ubicación no disponible en este momento.';
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage = '⚠️ Tiempo de espera agotado. Intenta de nuevo.';
+                                break;
+                        }
+                        
+                        showToast(errorMessage, 'error', 5000);
+                        console.log('Error de geolocalización:', error);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            }
+            
+            // Ejecutar automáticamente al cargar
+            setTimeout(getUserLocation, 500);
+            
+            // ESTADO DE LA APLICACIÓN
+            let temporalMarker = null;
+            let currentPopup = null;
+            let savedMarkers = [];
+            let routeLine = null;
+            let routeInfo = null;
+            let isSaving = false;
+            const MAX_POINTS = 2;
+            
+            // ACTUALIZAR VISTA DE LISTA
+            function updateListView() {
+                const listContent = document.getElementById('listContent');
+                
+                if (savedMarkers.length === 0 && !routeInfo) {
+                    listContent.innerHTML = `
+                        <div class="empty-state" role="status">
+                            <div class="empty-state-icon">📍</div>
+                            <p class="font-medium text-gray-700 mb-2">No hay lugares guardados</p>
+                            <p class="text-sm">Haz clic en el mapa para agregar puntos</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '';
+                
+                // Mostrar información de ruta si existe
+                if (routeInfo) {
+                    html += `
+                        <div class="route-info" role="article" aria-label="Información de ruta calculada">
+                            <div class="route-info-title">
+                                🚗 Ruta Calculada
+                            </div>
+                            <div class="route-info-details">
+                                <div>📏 Distancia: <strong>${routeInfo.distance} km</strong></div>
+                                <div>⏱️ Tiempo estimado: <strong>${routeInfo.duration} min</strong></div>
+                                <div class="text-xs text-gray-600 mt-2">
+                                    ${routeInfo.type === 'driving' ? '✅ Ruta por calles' : '⚠️ Línea directa (sin ruta)'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Mostrar puntos guardados
+                savedMarkers.forEach((point, index) => {
+                    const number = index + 1;
+                    html += `
+                        <div class="list-item" 
+                             role="article"
+                             tabindex="0"
+                             data-marker-id="${point.id}"
+                             aria-label="Punto ${number}: Latitud ${point.coords[0].toFixed(6)}, Longitud ${point.coords[1].toFixed(6)}">
+                            <div style="display: flex; align-items: center;">
+                                <div class="list-item-number" aria-hidden="true">${number}</div>
+                                <div class="list-item-content">
+                                    <div class="list-item-title">Punto ${number}</div>
+                                    <div class="list-item-coords">
+                                        Lat: ${point.coords[0].toFixed(6)}<br>
+                                        Lng: ${point.coords[1].toFixed(6)}
+                                    </div>
+                                    <div class="list-item-actions">
+                                        <button class="list-item-btn" 
+                                                onclick="window.flyToMarker('${point.id}')"
+                                                aria-label="Volar al punto ${number} en el mapa">
+                                            📍 Ver en mapa
+                                        </button>
+                                        <button class="list-item-btn" 
+                                                onclick="window.eliminarPunto('${point.id}')"
+                                                aria-label="Eliminar punto ${number}">
+                                            🗑️ Eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                listContent.innerHTML = html;
+                
+                // Agregar eventos de clic a los items de la lista
+                document.querySelectorAll('.list-item').forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        // No activar si se hizo clic en un botón
+                        if (e.target.tagName === 'BUTTON') return;
+                        
+                        const markerId = this.getAttribute('data-marker-id');
+                        window.flyToMarker(markerId);
+                    });
+                    
+                    // Soporte para teclado
+                    item.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            const markerId = this.getAttribute('data-marker-id');
+                            window.flyToMarker(markerId);
+                        }
+                    });
+                });
+            }
+            
+            // FUNCIÓN PARA VOLAR AL MARCADOR
+            window.flyToMarker = function(markerId) {
+                const point = savedMarkers.find(m => m.id === markerId);
+                if (!point) return;
+                
+                // Resaltar el item en la lista
+                document.querySelectorAll('.list-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                const listItem = document.querySelector(`[data-marker-id="${markerId}"]`);
+                if (listItem) {
+                    listItem.classList.add('active');
+                    setTimeout(() => listItem.classList.remove('active'), 2000);
+                }
+                
+                // Volar al punto en el mapa con animación
+                map.flyTo(point.coords, 16, {
+                    animate: true,
+                    duration: 1.5
+                });
+                
+                // Abrir popup después de la animación
+                setTimeout(() => {
+                    point.marker.openPopup();
+                }, 1500);
+                
+                // En móvil, cambiar a la vista de mapa
+                if (window.innerWidth <= 768) {
+                    switchToView('map');
+                }
+                
+                showToast('Navegando al punto seleccionado', 'info', 2000);
+            };
+            
+            // CLICK EN EL MAPA
+            map.on('click', function(e) {
+                if (savedMarkers.length >= MAX_POINTS) {
+                    showToast(`Máximo ${MAX_POINTS} puntos. Elimina uno para agregar otro.`, 'error', 3000);
+                    return;
+                }
+                
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+                
+                if (currentPopup) map.closePopup(currentPopup);
+                if (temporalMarker) map.removeLayer(temporalMarker);
+                
+                // Marcador temporal con mejor contraste (amarillo brillante con borde oscuro)
+                const grayIcon = L.divIcon({
+                    className: 'high-contrast-marker',
+                    html: `<div style="background: #fbbf24; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; border: 4px solid #1f2937; box-shadow: 0 3px 10px rgba(0,0,0,0.5); transform: rotate(-45deg);"></div>`,
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 32]
+                });
+                
+                temporalMarker = L.marker([lat, lng], { icon: grayIcon }).addTo(map);
+                
+                const pointNumber = savedMarkers.length + 1;
+                currentPopup = L.popup({
+                    closeButton: false,
+                    autoClose: true,
+                    closeOnClick: true
+                })
+                .setLatLng([lat, lng])
+                .setContent(`
+                    <div class="popup-content">
+                        <div class="popup-title">¿Guardar punto ${pointNumber}/${MAX_POINTS}?</div>
+                        <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
+                            Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}
+                        </div>
+                        <div class="popup-buttons">
+                            <button class="btn btn-secondary" onclick="window.cancelarPunto()" aria-label="Cancelar y no guardar este punto">Cancelar</button>
+                            <button class="btn btn-primary" onclick="window.guardarPunto(${lat}, ${lng})" aria-label="Confirmar y guardar este punto">Guardar</button>
+                        </div>
+                    </div>
+                `)
+                .openOn(map);
+            });
+            
+            map.on('popupclose', function(e) {
+                if (e.popup === currentPopup && temporalMarker && !isSaving) {
+                    setTimeout(() => {
+                        if (temporalMarker && map.hasLayer(temporalMarker) && !isSaving) {
+                            map.removeLayer(temporalMarker);
+                            temporalMarker = null;
+                        }
+                        currentPopup = null;
+                    }, 100);
+                }
+            });
+            
+            // CANCELAR PUNTO
+            window.cancelarPunto = function() {
+                if (temporalMarker) {
+                    map.removeLayer(temporalMarker);
+                    temporalMarker = null;
+                }
+                if (currentPopup) {
+                    map.closePopup(currentPopup);
+                    currentPopup = null;
+                }
+                showToast('Punto cancelado', 'info', 2000);
+            };
+            
+            // ELIMINAR PUNTO
+            window.eliminarPunto = function(markerId) {
+                const index = savedMarkers.findIndex(m => m.id === markerId);
+                if (index === -1) return;
+                
+                map.removeLayer(savedMarkers[index].marker);
+                savedMarkers.splice(index, 1);
+                
+                if (routeLine) {
+                    map.removeLayer(routeLine);
+                    routeLine = null;
+                    routeInfo = null;
+                }
+                
+                updateListView();
+                showToast(savedMarkers.length === 0 ? 'Todos los puntos eliminados' : 'Punto eliminado', 'info', 2000);
+            };
+            
+            // CALCULAR RUTA
+            async function drawRoute() {
+                if (savedMarkers.length !== 2) return;
+                
+                if (routeLine) map.removeLayer(routeLine);
+                
+                const point1 = savedMarkers[0].coords;
+                const point2 = savedMarkers[1].coords;
+                const routingToast = showToast('Calculando ruta...', 'info', 0);
+                
+                try {
+                    const url = `https://router.project-osrm.org/route/v1/driving/${point1[1]},${point1[0]};${point2[1]},${point2[0]}?overview=full&geometries=geojson`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+                        throw new Error('No se pudo calcular la ruta');
+                    }
+                    
+                    const route = data.routes[0];
+                    const latlngs = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                    
+                    // Ruta con mejor contraste (azul oscuro con sombra)
+                    routeLine = L.polyline(latlngs, {
+                        color: '#1e40af',
+                        weight: 6,
+                        opacity: 0.9,
+                        lineJoin: 'round',
+                        lineCap: 'round',
+                        className: 'high-contrast-marker'
+                    }).addTo(map);
+                    
+                    const distance = (route.distance / 1000).toFixed(2);
+                    const duration = Math.round(route.duration / 60);
+                    
+                    routeInfo = {
+                        distance: distance,
+                        duration: duration,
+                        type: 'driving'
+                    };
+                    
+                    routeLine.bindPopup(`
+                        <div style="padding: 10px; min-width: 180px;">
+                            <div style="font-weight: bold; margin-bottom: 8px;">🚗 Ruta por calles</div>
+                            <div style="font-size: 12px; color: #6b7280;">
+                                <div>📏 Distancia: <b style="color: #1e40af;">${distance} km</b></div>
+                                <div>⏱️ Tiempo: <b style="color: #1e40af;">${duration} min</b></div>
+                            </div>
+                        </div>
+                    `);
+                    
+                    map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+                    routingToast.remove();
+                    updateListView();
+                    showToast(`Ruta calculada: ${distance} km (${duration} min)`, 'success', 4000);
+                    
+                } catch (error) {
+                    routingToast.remove();
+                    
+                    // Línea directa con mejor contraste (roja punteada)
+                    routeLine = L.polyline([point1, point2], {
+                        color: '#b91c1c',
+                        weight: 5,
+                        opacity: 0.8,
+                        dashArray: '10, 10',
+                        className: 'high-contrast-marker'
+                    }).addTo(map);
+                    
+                    const distance = (map.distance(point1, point2) / 1000).toFixed(2);
+                    
+                    routeInfo = {
+                        distance: distance,
+                        duration: '?',
+                        type: 'direct'
+                    };
+                    
+                    routeLine.bindPopup(`<div style="padding: 8px; text-align: center;"><b>⚠️ Línea directa</b><br>~${distance} km</div>`);
+                    updateListView();
+                    showToast('No se pudo calcular ruta. Mostrando línea directa.', 'error', 3000);
+                }
+            }
+            
+            // GUARDAR PUNTO
+            window.guardarPunto = async function(lat, lng) {
+                isSaving = true;
+                
+                if (currentPopup) {
+                    map.closePopup(currentPopup);
+                    currentPopup = null;
+                }
+                
+                const loadingToast = showToast('Guardando punto...', 'info', 0);
+                
+                try {
+                    await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+                    
+                    const pointId = `punto_${Date.now()}`;
+                    const pointNumber = savedMarkers.length + 1;
+                    
+                    loadingToast.remove();
+                    
+                    if (temporalMarker) {
+                        map.removeLayer(temporalMarker);
+                        
+                        // Marcador guardado con excelente contraste (rojo brillante con borde blanco grueso)
+                        const redIcon = L.divIcon({
+                            className: 'high-contrast-marker',
+                            html: `<div style="background: #dc2626; width: 36px; height: 36px; border-radius: 50% 50% 50% 0; border: 5px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.6); transform: rotate(-45deg); animation: bounce 0.5s; position: relative;"><div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(45deg); color: white; font-weight: bold; font-size: 16px; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">${pointNumber}</div></div><style>@keyframes bounce { 0%, 100% { transform: rotate(-45deg) translateY(0); } 50% { transform: rotate(-45deg) translateY(-10px); }}</style>`,
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 36]
+                        });
+                        
+                        const savedMarker = L.marker([lat, lng], { icon: redIcon }).addTo(map);
+                        
+                        savedMarker.bindPopup(`
+                            <div style="padding: 8px; min-width: 150px;">
+                                <div style="font-weight: bold; margin-bottom: 4px;">Punto ${pointNumber} ✓</div>
+                                <div style="font-size: 11px; color: #6b7280; margin-bottom: 8px;">
+                                    Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}
+                                </div>
+                                <button class="btn btn-secondary" onclick="window.eliminarPunto('${pointId}')" style="width: 100%; font-size: 12px; padding: 6px;" aria-label="Eliminar punto ${pointNumber}">
+                                    🗑️ Eliminar
+                                </button>
+                            </div>
+                        `);
+                        
+                        savedMarkers.push({
+                            id: pointId,
+                            marker: savedMarker,
+                            coords: [lat, lng]
+                        });
+                        
+                        temporalMarker = null;
+                        
+                        updateListView();
+                        
+                        if (savedMarkers.length === 2) {
+                            await drawRoute();
+                        } else {
+                            showToast('¡Punto guardado! Agrega otro para crear ruta', 'success', 3000);
+                        }
+                    }
+                    
+                    isSaving = false;
+                    
+                } catch (error) {
+                    isSaving = false;
+                    loadingToast.remove();
+                    showToast('Error al guardar. Intenta nuevamente.', 'error', 5000);
+                    
+                    if (temporalMarker) {
+                        temporalMarker.bindPopup(`
+                            <div class="popup-content">
+                                <div style="color: #ef4444; font-weight: bold; margin-bottom: 8px;">⚠️ Error</div>
+                                <div class="popup-buttons">
+                                    <button class="btn btn-secondary" onclick="window.cancelarPunto()">Cancelar</button>
+                                    <button class="btn btn-primary" onclick="window.guardarPunto(${lat}, ${lng})">Reintentar</button>
+                                </div>
+                            </div>
+                        `).openPopup();
+                    }
+                }
+            };
+            
+            // BOTÓN DE UBICACIÓN
+            document.getElementById('locateBtn').addEventListener('click', function() {
+                if (!navigator.geolocation) {
+                    showToast('Geolocalización no disponible', 'error', 3000);
+                    return;
+                }
+                
+                const btn = this;
+                btn.innerHTML = '<div class="spinner" style="width: 20px; height: 20px;"></div>';
+                btn.setAttribute('aria-label', 'Obteniendo ubicación...');
+                
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const userCoords = [position.coords.latitude, position.coords.longitude];
+                        
+                        map.flyTo(userCoords, 15, { 
+                            animate: true,
+                            duration: 1.5
+                        });
+                        
+                        const userIcon = L.divIcon({
+                            className: 'high-contrast-marker',
+                            html: `<div style="position: relative;">
+                                <div style="background: #3b82f6; width: 20px; height: 20px; border-radius: 50%; border: 4px solid white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.8), 0 0 5px rgba(0,0,0,0.5);"></div>
+                                <div style="position: absolute; top: 50%; left: 50%; width: 60px; height: 60px; border: 2px solid #3b82f6; border-radius: 50%; transform: translate(-50%, -50%); animation: pulse 2s infinite;"></div>
+                            </div>
+                            <style>
+                                @keyframes pulse {
+                                    0% { opacity: 1; transform: translate(-50%, -50%) scale(0.8); }
+                                    50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.2); }
+                                    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+                                }
+                            </style>`,
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        });
+                        
+                        // Remover marcador anterior si existe
+                        if (userLocationMarker) {
+                            map.removeLayer(userLocationMarker);
+                        }
+                        
+                        userLocationMarker = L.marker(userCoords, { icon: userIcon })
+                            .addTo(map)
+                            .bindPopup(`
+                                <div style="padding: 10px; text-align: center;">
+                                    <div style="font-weight: bold; margin-bottom: 4px;">📍 Tu ubicación actualizada</div>
+                                    <div style="font-size: 11px; color: #6b7280;">
+                                        Lat: ${userCoords[0].toFixed(6)}<br>
+                                        Lng: ${userCoords[1].toFixed(6)}
+                                    </div>
+                                    <div style="font-size: 10px; color: #9ca3af; margin-top: 6px;">
+                                        Precisión: ±${Math.round(position.coords.accuracy)}m
+                                    </div>
+                                </div>
+                            `)
+                            .openPopup();
+                        
+                        // Agregar círculo de precisión
+                        L.circle(userCoords, {
+                            color: '#3b82f6',
+                            fillColor: '#93c5fd',
+                            fillOpacity: 0.15,
+                            radius: position.coords.accuracy,
+                            weight: 2
+                        }).addTo(map);
+                        
+                        btn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>';
+                        btn.setAttribute('aria-label', 'Actualizar mi ubicación');
+                        showToast('📍 Ubicación actualizada', 'success', 2000);
+                    },
+                    function(error) {
+                        btn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>';
+                        btn.setAttribute('aria-label', 'Actualizar mi ubicación');
+                        showToast(error.code === 1 ? '⚠️ Permiso denegado' : 'No se pudo obtener ubicación', 'error', 3000);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            });
+            
+            // PESTAÑAS MÓVIL
+            function switchToView(view) {
+                const mapContainer = document.querySelector('.map-container');
+                const listContainer = document.querySelector('.list-container');
+                const tabs = document.querySelectorAll('.mobile-tab');
+                
+                tabs.forEach(tab => {
+                    if (tab.getAttribute('data-view') === view) {
+                        tab.classList.add('active');
+                    } else {
+                        tab.classList.remove('active');
+                    }
+                });
+                
+                if (view === 'map') {
+                    mapContainer.classList.add('active');
+                    listContainer.classList.remove('active');
+                    setTimeout(() => map.invalidateSize(), 100);
+                } else {
+                    mapContainer.classList.remove('active');
+                    listContainer.classList.add('active');
+                }
+            }
+            
+            document.querySelectorAll('.mobile-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const view = this.getAttribute('data-view');
+                    switchToView(view);
+                });
+            });
+            
+            // RESPONSIVE
+            window.addEventListener('resize', () => {
+                map.invalidateSize();
+            });
+            
+            window.addEventListener('orientationchange', () => {
+                setTimeout(() => map.invalidateSize(), 200);
+            });
+        });
+    </script>
+    
+</body>
+</html>
